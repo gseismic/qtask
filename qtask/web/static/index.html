@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务监控系统</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link href="https://unpkg.com/element-plus/dist/index.css" rel="stylesheet">
+    <script src="https://unpkg.com/element-plus/dist/index.full.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .app-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px 15px 0 0;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            min-height: 600px;
+        }
+        
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        
+        .content-tabs {
+            padding: 30px;
+        }
+        
+        .task-table {
+            margin-top: 20px;
+        }
+        
+        .status-tag {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-todo { background: #ffc107; color: #212529; }
+        .status-processing { background: #17a2b8; color: white; }
+        .status-done { background: #28a745; color: white; }
+        .status-error { background: #dc3545; color: white; }
+        .status-null { background: #6c757d; color: white; }
+        
+        .task-id {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #495057;
+        }
+        
+        .group-filter {
+            margin-bottom: 20px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        
+        .refresh-time {
+            text-align: right;
+            color: #666;
+            font-size: 12px;
+            padding: 10px 30px;
+        }
+        
+        .create-task-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .el-card {
+            margin-bottom: 20px;
+        }
+        
+        .group-card {
+            margin-bottom: 15px;
+        }
+        
+        .group-stats {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .group-stat-item {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="app-container">
+            <div class="header">
+                <h1>{{ title }}</h1>
+                <div class="refresh-time">
+                    最后更新: {{ lastUpdate }}
+                    <el-button size="small" @click="manualRefresh" style="margin-left: 10px;">
+                        手动刷新
+                    </el-button>
+                </div>
+            </div>
+            
+            <div class="main-content">
+                <!-- 统计卡片 -->
+                <div class="stats-cards">
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.todo_count }}</div>
+                        <div class="stat-label">待处理任务</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.done_count }}</div>
+                        <div class="stat-label">已完成任务</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.error_count }}</div>
+                        <div class="stat-label">错误任务</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.total_retries }}</div>
+                        <div class="stat-label">总重试次数</div>
+                    </div>
+                </div>
+                
+                <!-- 主要内容区域 -->
+                <div class="content-tabs">
+                    <el-tabs v-model="activeTab" @tab-click="handleTabClick">
+                        <!-- 仪表盘标签页 -->
+                        <el-tab-pane label="仪表盘" name="dashboard">
+                            <el-row :gutter="20">
+                                <el-col :span="12">
+                                    <el-card header="任务状态分布">
+                                        <div class="chart-container" v-if="!chartsDisabled">
+                                            <div ref="statusChart" id="statusChart" style="width: 100%; height: 300px;"></div>
+                                        </div>
+                                        <div v-else style="text-align: center; padding: 50px; color: #666;">
+                                            图表功能已禁用<br>
+                                            <small>刷新页面可重新启用</small><br><br>
+                                            <el-button size="small" @click="enableCharts">重新启用图表</el-button>
+                                        </div>
+                                    </el-card>
+                                </el-col>
+                                <el-col :span="12">
+                                    <el-card header="分组统计">
+                                        <div class="chart-container" v-if="!chartsDisabled">
+                                            <div ref="groupChart" id="groupChart" style="width: 100%; height: 300px;"></div>
+                                        </div>
+                                        <div v-else style="text-align: center; padding: 50px; color: #666;">
+                                            图表功能已禁用<br>
+                                            <small>刷新页面可重新启用</small><br><br>
+                                            <el-button size="small" @click="enableCharts">重新启用图表</el-button>
+                                        </div>
+                                    </el-card>
+                                </el-col>
+                            </el-row>
+                            
+                            <el-card header="最近任务" style="margin-top: 20px;">
+                                <el-table :data="recentTasks" style="width: 100%">
+                                    <el-table-column prop="name" label="任务名称" width="200"></el-table-column>
+                                    <el-table-column prop="group" label="分组" width="120"></el-table-column>
+                                    <el-table-column label="状态" width="100">
+                                        <template #default="scope">
+                                            <span :class="'status-tag status-' + scope.row.status.toLowerCase()">
+                                                {{ scope.row.status }}
+                                            </span>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column label="创建时间" width="180">
+                                        <template #default="scope">
+                                            {{ formatTime(scope.row.created_time) }}
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column label="处理时长" width="100">
+                                        <template #default="scope">
+                                            {{ scope.row.duration ? scope.row.duration + 's' : '-' }}
+                                        </template>
+                                    </el-table-column>
+                                </el-table>
+                            </el-card>
+                        </el-tab-pane>
+                        
+                        <!-- 任务列表标签页 -->
+                        <el-tab-pane label="任务列表" name="tasks">
+                            <!-- 分组过滤器 -->
+                            <div class="group-filter">
+                                <el-select v-model="selectedGroup" placeholder="选择分组" @change="loadTasksByGroup" clearable>
+                                    <el-option label="全部分组" value=""></el-option>
+                                    <el-option v-for="group in groups" :key="group" :label="group" :value="group"></el-option>
+                                </el-select>
+                                <el-button @click="refreshTasks" style="margin-left: 10px;">刷新</el-button>
+                            </div>
+                            
+                            <!-- 任务表格 -->
+                            <el-table :data="tasks" style="width: 100%" class="task-table">
+                                <el-table-column label="任务ID" width="100">
+                                    <template #default="scope">
+                                        <span class="task-id">{{ getShortId(scope.row.id) }}</span>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column prop="name" label="任务名称" width="200"></el-table-column>
+                                <el-table-column prop="group" label="分组" width="120"></el-table-column>
+                                <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
+                                <el-table-column label="状态" width="100">
+                                    <template #default="scope">
+                                        <span :class="'status-tag status-' + scope.row.status.toLowerCase()">
+                                            {{ scope.row.status }}
+                                        </span>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="创建时间" width="180">
+                                    <template #default="scope">
+                                        {{ formatTime(scope.row.created_time) }}
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="处理时长" width="100">
+                                    <template #default="scope">
+                                        {{ scope.row.duration ? scope.row.duration + 's' : '-' }}
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </el-tab-pane>
+                        
+                        <!-- 分组管理标签页 -->
+                        <el-tab-pane label="分组管理" name="groups">
+                            <el-row :gutter="20">
+                                                        <el-col :span="8" v-for="(groupStat, groupName) in safeGroupStats" :key="groupName">
+                            <el-card class="group-card">
+                                <template #header>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-weight: 600;">{{ groupName }}</span>
+                                        <span style="color: #666; font-size: 14px;">{{ groupStat.total || 0 }} 个任务</span>
+                                    </div>
+                                </template>
+                                        <div class="group-stats">
+                                            <template v-for="(count, status) in groupStat.status_counts" :key="status">
+                                                <span v-if="count && count > 0"
+                                                      :class="'group-stat-item status-' + status.toLowerCase()">
+                                                    {{ status }}: {{ count }}
+                                                </span>
+                                            </template>
+                                        </div>
+                                        <el-button size="small" @click="viewGroupTasks(groupName)" style="margin-top: 15px;">
+                                            查看任务
+                                        </el-button>
+                                    </el-card>
+                                </el-col>
+                            </el-row>
+                        </el-tab-pane>
+                        
+                        <!-- 创建任务标签页 -->
+                        <el-tab-pane label="创建任务" name="create">
+                            <div class="create-task-form">
+                                <el-form :model="newTask" label-width="100px">
+                                    <el-form-item label="任务名称">
+                                        <el-input v-model="newTask.name" placeholder="请输入任务名称"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="任务分组">
+                                        <el-select v-model="newTask.group" placeholder="选择或输入分组" filterable allow-create>
+                                            <el-option v-for="group in groups" :key="group" :label="group" :value="group"></el-option>
+                                        </el-select>
+                                    </el-form-item>
+                                    <el-form-item label="任务类型">
+                                        <el-input v-model="newTask.task_type" placeholder="请输入任务类型"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="任务描述">
+                                        <el-input v-model="newTask.description" type="textarea" :rows="3" placeholder="请输入任务描述"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="任务参数">
+                                        <el-input v-model="newTask.paramsJson" type="textarea" :rows="4" 
+                                                placeholder='请输入JSON格式的参数，例如: {"key": "value"}'></el-input>
+                                    </el-form-item>
+                                    <el-form-item>
+                                        <el-button type="primary" @click="createTask">创建任务</el-button>
+                                        <el-button @click="resetForm">重置</el-button>
+                                    </el-form-item>
+                                </el-form>
+                            </div>
+                        </el-tab-pane>
+                    </el-tabs>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
