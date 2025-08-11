@@ -590,6 +590,18 @@ const app = createApp({
         
         getShortId(id) {
             return id ? id.substring(0, 8) + '...' : '-';
+        },
+        
+        getTaskType(task) {
+            // 从任务数据中提取任务类型
+            if (task.data && task.data.type) {
+                return task.data.type;
+            }
+            // 兼容旧格式
+            if (task.task_type) {
+                return task.task_type;
+            }
+            return 'unknown';
         }
     }
 });

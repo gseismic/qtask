@@ -27,7 +27,9 @@ def handle_data_processing(data):
     elif operation == 'invalid':
         return 'SKIP', None, f'Invalid operation: {operation}'
     else:
-        return 'RETRY', None, f'Unknown operation: {operation}, will retry'
+        # 表示处理出错，ERROR会自动重试3次
+        return 'ERROR', None, f'Unknown operation: {operation}'
+        # return 'RETRY', None, f'Unknown operation: {operation}, will retry'
 
 @TaskWorker.register('report', max_retries=2)
 def handle_report(data):

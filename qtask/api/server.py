@@ -268,7 +268,8 @@ class QTaskServer:
                     'start_time': task_info.get('start_time'),  # 添加start_time字段
                     'processed_time': task_info.get('processed_time'),
                     'duration': task_info.get('duration'),
-                    'namespace': task_info.get('namespace', 'default')
+                    'namespace': task_info.get('namespace', 'default'),
+                    'data': task_info.get('data', {})  # 添加任务数据，包含类型信息
                 })
             
             return {

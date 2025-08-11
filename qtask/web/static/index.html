@@ -198,6 +198,19 @@
             font-size: 11px;
             color: #495057;
         }
+        
+        .task-type-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -288,7 +301,12 @@
                             
                             <el-card header="最近任务" style="margin-top: 20px;">
                                 <el-table :data="recentTasks" style="width: 100%">
-                                    <el-table-column prop="name" label="任务名称" width="200"></el-table-column>
+                                    <el-table-column prop="name" label="任务名称" width="180"></el-table-column>
+                                    <el-table-column label="任务类型" width="120">
+                                        <template #default="scope">
+                                            <span class="task-type-tag">{{ getTaskType(scope.row) }}</span>
+                                        </template>
+                                    </el-table-column>
                                     <el-table-column prop="group" label="分组" width="100"></el-table-column>
                                     <el-table-column prop="namespace" label="Namespace" width="100"></el-table-column>
                                     <el-table-column label="状态" width="100">
@@ -298,12 +316,12 @@
                                             </span>
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="创建时间" width="180">
+                                    <el-table-column label="创建时间" width="160">
                                         <template #default="scope">
                                             {{ formatTime(scope.row.created_time) }}
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="处理时刻" width="180">
+                                    <el-table-column label="处理时刻" width="160">
                                         <template #default="scope">
                                             {{ formatTime(scope.row.processed_time) }}
                                         </template>
@@ -335,7 +353,12 @@
                                         <span class="task-id">{{ getShortId(scope.row.id) }}</span>
                                     </template>
                                 </el-table-column>
-                                <el-table-column prop="name" label="任务名称" width="150"></el-table-column>
+                                <el-table-column prop="name" label="任务名称" width="140"></el-table-column>
+                                <el-table-column label="任务类型" width="120">
+                                    <template #default="scope">
+                                        <span class="task-type-tag">{{ getTaskType(scope.row) }}</span>
+                                    </template>
+                                </el-table-column>
                                 <el-table-column prop="group" label="分组" width="100"></el-table-column>
                                 <el-table-column prop="namespace" label="Namespace" width="100"></el-table-column>
                                 <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
