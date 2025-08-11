@@ -27,6 +27,10 @@ class TaskQuery:
         """
         all_tasks = self.storage.get_all_task_infos()
         matched_ids = []
+
+        print('--------------------------------')
+        print('**all_tasks', all_tasks)
+        print('--------------------------------')
         
         # 标准化过滤条件
         normalized_filters = self._normalize_filters(filters)

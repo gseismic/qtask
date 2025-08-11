@@ -41,6 +41,10 @@ class TaskDeleteRequest(BaseModel):
 class NamespaceClearRequest(BaseModel):
     namespaces: List[str]
 
+class TaskRequeueRequest(BaseModel):
+    task_ids: List[str]
+    namespace: Optional[str] = None
+
 class QTaskServer:
     def __init__(self, config: Optional[QTaskConfig] = None):
         self.config = config or QTaskConfig()
@@ -213,6 +217,12 @@ class QTaskServer:
             """获取仪表盘数据"""
             namespace = self._get_namespace_from_request(request)
             storage = self.factory.get_storage(namespace)
+            # 最近任务数量，默认10，允许30、100，最大100
+            try:
+                recent_limit = int(request.query_params.get('recent') or 10)
+            except Exception:
+                recent_limit = 10
+            recent_limit = max(1, min(100, recent_limit))
             
             # 获取所有namespace统计
             all_namespaces = storage.get_all_namespaces()
@@ -244,7 +254,8 @@ class QTaskServer:
             
             for group in groups:
                 group_tasks = [task for task in all_tasks.values() if task.get('group', 'default') == group]
-                status_counts = {'TODO': 0, 'PROCESSING': 0, 'DONE': 0, 'ERROR': 0, 'SKIP': 0}
+                # 统计包含 RETRY 在内的状态
+                status_counts = {'TODO': 0, 'PROCESSING': 0, 'DONE': 0, 'ERROR': 0, 'SKIP': 0, 'RETRY': 0}
                 
                 for task in group_tasks:
                     status = task.get('status', 'TODO')
@@ -258,7 +269,7 @@ class QTaskServer:
             
             # 最近任务
             recent_tasks = []
-            for task_id, task_info in list(all_tasks.items())[-10:]:  # 最近10个任务
+            for task_id, task_info in list(all_tasks.items())[-recent_limit:]:
                 recent_tasks.append({
                     'id': task_id,
                     'name': task_info.get('name', '未命名任务'),
@@ -391,6 +402,31 @@ class QTaskServer:
                     "namespace_results": results
                 }
                 
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/tasks/requeue")
+        async def requeue_tasks(request: TaskRequeueRequest):
+            """将任务重新放回TODO队列（通常用于ERROR任务）"""
+            try:
+                namespace = request.namespace or self.config.default_namespace
+                storage = self.factory.get_storage(namespace)
+
+                if not request.task_ids:
+                    raise HTTPException(status_code=400, detail="No task_ids provided")
+
+                success, failed, errors = 0, 0, []
+                for tid in request.task_ids:
+                    try:
+                        if storage.requeue_task(tid):
+                            success += 1
+                        else:
+                            failed += 1
+                            errors.append(f"Task {tid} not found")
+                    except Exception as e:
+                        failed += 1
+                        errors.append(f"Task {tid}: {e}")
+                return {"success": success, "failed": failed, "errors": errors}
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 

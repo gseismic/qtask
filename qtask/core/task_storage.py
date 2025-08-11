@@ -137,6 +137,51 @@ class TaskStorage:
             task_id.decode('utf-8'): int(retry_count) 
             for task_id, retry_count in raw_retries.items()
         }
+
+    def requeue_task(self, task_id: str) -> bool:
+        """将任务放回TODO队列（常用于ERROR任务重新处理）"""
+        task_info_str = self.redis.hget(self.task_info_key, task_id)
+        if not task_info_str:
+            return False
+        task_info = json.loads(task_info_str)
+
+        print('task_info', task_info)
+
+        # 从其他集合/列表中移除
+        try:
+            # 从ERROR列表中移除所有出现
+            self.redis.lrem(self.queues['ERROR'], 0, task_id)
+            # 从SKIP列表中移除（防御性）
+            self.redis.lrem(self.queues['SKIP'], 0, task_id)
+            # 从DONE集合中移除（防御性）
+            self.redis.srem(self.queues['DONE'], task_id)
+        except Exception:
+            pass
+
+        # 压回TODO队列
+        self.redis.lpush(self.queues['TODO'], json.dumps({'id': task_id, 'data': task_info.get('data')}))
+
+        # 重置任务状态与时间字段
+        task_info['status'] = 'TODO'
+        task_info['start_time'] = None
+        task_info['end_time'] = None
+        task_info['processed_time'] = None
+        task_info['duration'] = None
+        # 可选：清理上次执行信息
+        task_info.pop('message', None)
+        task_info.pop('result_data', None)
+        task_info.pop('processing_time', None)
+
+        self.redis.hset(self.task_info_key, task_id, json.dumps(task_info))
+
+        print('new task_info', task_info)
+
+        # 清零重试次数
+        self.redis.hdel(self.retries_key, task_id)
+
+        print('get_all_task_infos', self.get_all_task_infos())
+
+        return True
     
     def get_task_info(self, task_id):
         """获取单个任务详细信息"""

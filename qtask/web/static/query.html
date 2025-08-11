@@ -417,7 +417,15 @@
                     
                     <div class="form-group">
                         <label for="statuses">任务状态</label>
-                        <input type="text" id="statuses" name="statuses" placeholder="DONE,ERROR,SKIP (逗号分隔)">
+                        <select id="statuses" name="statuses">
+                            <option value="">全部</option>
+                            <option value="TODO">TODO</option>
+                            <option value="PROCESSING">PROCESSING</option>
+                            <option value="DONE">DONE</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="SKIP">SKIP</option>
+                            <option value="RETRY">RETRY</option>
+                        </select>
                     </div>
                     
                     <div class="form-group">
@@ -619,7 +627,7 @@
             const tbody = document.getElementById('taskTableBody');
             tbody.innerHTML = '';
             
-            data.tasks.forEach(task => {
+                data.tasks.forEach(task => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="checkbox-cell">
@@ -628,7 +636,10 @@
                     <td><span class="namespace-badge">${escapeHtml(task.namespace || 'default')}</span></td>
                     <td>${escapeHtml(task.name || '未命名任务')}</td>
                     <td>${escapeHtml(task.group || 'default')}</td>
-                    <td><span class="status-badge status-${task.status.toLowerCase()}">${task.status}</span></td>
+                        <td>
+                            <span class="status-badge status-${task.status.toLowerCase()}">${task.status}</span>
+                            ${task.status === 'ERROR' ? `<button class="btn btn-secondary" style="margin-left:8px; padding:4px 8px; font-size:12px;" onclick="requeueSingleTask('${task.id}', '${task.namespace || 'default'}')">放回</button>` : ''}
+                        </td>
                     <td>${formatDateTime(task.created_time)}</td>
                     <td>${task.retry_count || 0}</td>
                     <td>
@@ -947,6 +958,54 @@
                 return new Date(dateString).toLocaleString('zh-CN');
             } catch {
                 return dateString;
+            }
+        }
+
+        // 作为全局函数暴露，供内联 onclick 调用
+        async function requeueSingleTask(taskId, namespace) {
+            try {
+                const resp = await fetch('/api/tasks/requeue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_ids: [taskId], namespace })
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const result = await resp.json();
+                if (result.success > 0) {
+                    showSuccess(`任务 ${taskId.substring(0,8)}... 已放回`);
+                    alert(`✅ 放回成功: 任务 ${taskId.substring(0,8)}... 已移回待处理`);
+                    // 乐观更新UI：移除该行并更新数量
+                    try {
+                        const cb = document.querySelector(`#taskTableBody input[type="checkbox"][value="${taskId}"]`);
+                        const row = cb ? cb.closest('tr') : null;
+                        if (row) {
+                            row.parentNode.removeChild(row);
+                            // 更新已选择计数
+                            updateSelection();
+                            // 更新结果数量显示
+                            const rc = document.getElementById('resultCount');
+                            if (rc) {
+                                const m = rc.textContent.match(/\d+/);
+                                if (m) {
+                                    const n = Math.max(0, parseInt(m[0], 10) - 1);
+                                    rc.textContent = `找到 ${n} 个任务`;
+                                    if (n === 0) {
+                                        document.getElementById('taskTable').classList.add('hidden');
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) { /* 忽略乐观更新失败 */ }
+                    // 后台刷新，确保数据与服务端一致
+                    setTimeout(() => queryTasks(), 300);
+                } else {
+                    const msg = result.errors?.join(', ') || '未知错误';
+                    showError(`放回失败: ${msg}`);
+                    alert(`❌ 放回失败: ${msg}`);
+                }
+            } catch (e) {
+                showError('放回失败: ' + e.message);
+                alert('❌ 放回失败: ' + e.message);
             }
         }
     </script>

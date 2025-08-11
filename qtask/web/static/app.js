@@ -8,6 +8,9 @@ const app = createApp({
             lastUpdate: '',
             activeTab: 'dashboard',
             selectedGroup: '',
+            selectedNamespace: '',
+            selectedTaskType: '',
+            selectedStatus: '',
             
             // 统计数据
             stats: {
@@ -21,9 +24,13 @@ const app = createApp({
             // 任务数据
             tasks: [],
             recentTasks: [],
+            recentLimit: 10,
             groups: [],
+            allNamespaces: [],
+            allTaskTypes: [],
             groupStats: {},
             namespaceStats: {},
+            groupsNamespace: 'default',
             
             // 图表实例
             statusChart: null,
@@ -33,6 +40,7 @@ const app = createApp({
             newTask: {
                 name: '',
                 group: 'default',
+                namespace: 'default',
                 task_type: '',
                 description: '',
                 paramsJson: '{}'
@@ -123,7 +131,7 @@ const app = createApp({
         
         async loadDashboardData() {
             try {
-                const response = await axios.get('/api/dashboard');
+                const response = await axios.get('/api/dashboard', { params: { recent: this.recentLimit }});
                 const data = response.data;
                 
                 this.stats = data.stats;
@@ -131,6 +139,16 @@ const app = createApp({
                 this.namespaceStats = data.namespace_stats || {};
                 this.recentTasks = data.recent_tasks;
                 this.lastUpdate = this.formatTime(data.timestamp);
+                // 提取所有namespace与任务类型供筛选
+                this.allNamespaces = Object.keys(this.namespaceStats || {});
+                const typeSet = new Set();
+                const allTasks = await axios.get('/api/tasks');
+                const infos = allTasks.data?.TASK_INFOS || {};
+                Object.values(infos).forEach(t => {
+                    const tp = (t.data && t.data.type) ? t.data.type : undefined;
+                    if (tp) typeSet.add(tp);
+                });
+                this.allTaskTypes = Array.from(typeSet).sort();
                 
                 // 延迟更新图表，确保DOM已更新
                 this.$nextTick(() => {
@@ -160,7 +178,7 @@ const app = createApp({
         
         async loadTasks() {
             try {
-                const response = await axios.get('/api/tasks');
+                const response = await axios.get('/api/tasks', { params: this.selectedNamespace ? { namespace: this.selectedNamespace } : {} });
                 const data = response.data;
                 
                 // 将所有任务合并到一个列表中，并添加详细信息
@@ -214,6 +232,13 @@ const app = createApp({
                 
                 // 按创建时间排序
                 this.tasks.sort((a, b) => new Date(b.created_time) - new Date(a.created_time));
+                // 前端筛选：任务类型与状态
+                if (this.selectedTaskType) {
+                    this.tasks = this.tasks.filter(t => this.getTaskType(t) === this.selectedTaskType);
+                }
+                if (this.selectedStatus) {
+                    this.tasks = this.tasks.filter(t => (t.status || '') === this.selectedStatus);
+                }
                 
             } catch (error) {
                 console.error('加载任务失败:', error);
@@ -231,7 +256,7 @@ const app = createApp({
             }
             
             try {
-                const response = await axios.get(`/api/tasks/group/${this.selectedGroup}`);
+                const response = await axios.get(`/api/tasks/group/${this.selectedGroup}`, { params: this.selectedNamespace ? { namespace: this.selectedNamespace } : {} });
                 const data = response.data;
                 
                 this.tasks = Object.values(data.tasks).map(task => ({
@@ -251,6 +276,13 @@ const app = createApp({
                 
                 // 按创建时间排序
                 this.tasks.sort((a, b) => new Date(b.created_time) - new Date(a.created_time));
+                // 前端筛选：任务类型与状态
+                if (this.selectedTaskType) {
+                    this.tasks = this.tasks.filter(t => this.getTaskType(t) === this.selectedTaskType);
+                }
+                if (this.selectedStatus) {
+                    this.tasks = this.tasks.filter(t => (t.status || '') === this.selectedStatus);
+                }
                 
             } catch (error) {
                 console.error('加载分组任务失败:', error);
@@ -260,7 +292,7 @@ const app = createApp({
         
         async loadGroups() {
             try {
-                const response = await axios.get('/api/groups');
+                const response = await axios.get('/api/groups', { params: { namespace: this.groupsNamespace || 'default' }});
                 const data = response.data;
                 
                 this.groups = data.groups;
@@ -290,7 +322,7 @@ const app = createApp({
                     params: params
                 };
                 
-                const response = await axios.post('/api/tasks', taskData);
+                const response = await axios.post('/api/tasks', taskData, { headers: { 'X-QTask-Namespace': this.newTask.namespace || 'default' }});
                 
                 ElMessage.success('任务创建成功');
                 this.resetForm();
@@ -311,6 +343,7 @@ const app = createApp({
             this.newTask = {
                 name: '',
                 group: 'default',
+                namespace: 'default',
                 task_type: '',
                 description: '',
                 paramsJson: '{}'

@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='qtask', 
-    version='0.1.1', 
+    version='0.1.6', 
     packages=find_packages(),
     description='A mini Task Scheduler',
     install_requires = [

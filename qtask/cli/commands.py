@@ -961,5 +961,49 @@ def clean(redis_host: str, redis_port: int, redis_db: int, namespace: str,
         click.echo(f"❌ 清理失败: {e}", err=True)
 
 
+@cli.command()
+@click.option('--redis-host', default='localhost', help='Redis host')
+@click.option('--redis-port', default=6379, type=int, help='Redis port')
+@click.option('--redis-db', default=0, type=int, help='Redis database')
+@click.option('--namespace', default='default', help='Target namespace')
+@click.option('--task-ids', required=True, help='Comma separated task IDs to requeue')
+def requeue(redis_host: str, redis_port: int, redis_db: int, namespace: str, task_ids: str):
+    """Requeue tasks (typically ERROR tasks) back to TODO queue."""
+    try:
+        # 创建配置和工厂
+        config = QTaskConfig()
+        config.redis_host = redis_host
+        config.redis_port = redis_port
+        config.redis_db = redis_db
+        config.default_namespace = namespace
+        
+        factory = TaskStorageFactory(config)
+        storage = factory.get_storage(namespace)
+        
+        ids = [tid.strip() for tid in task_ids.split(',') if tid.strip()]
+        if not ids:
+            click.echo('❌ 请提供有效的 task IDs')
+            return
+        
+        success, failed = 0, 0
+        errors = []
+        for tid in ids:
+            try:
+                if storage.requeue_task(tid):
+                    success += 1
+                else:
+                    failed += 1
+                    errors.append(f"Task {tid} not found")
+            except Exception as e:
+                failed += 1
+                errors.append(f"Task {tid}: {e}")
+        
+        click.echo(f"✅ 放回成功: {success} 个; ❌ 失败: {failed} 个")
+        if errors:
+            for err in errors:
+                click.echo(f"   - {err}")
+    except Exception as e:
+        click.echo(f"❌ 放回失败: {e}", err=True)
+
 if __name__ == '__main__':
     cli()

@@ -99,6 +99,7 @@
         .status-done { background: #28a745; color: white; }
         .status-error { background: #dc3545; color: white; }
         .status-null { background: #6c757d; color: white; }
+        .status-retry { background: #17a2b8; color: white; }
         
         .task-id {
             font-family: 'Courier New', monospace;
@@ -111,6 +112,12 @@
         
         .group-filter {
             margin-bottom: 20px;
+        }
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         
         .chart-container {
@@ -300,6 +307,14 @@
                             </el-card>
                             
                             <el-card header="最近任务" style="margin-top: 20px;">
+                                <div style="margin-bottom:10px; display:flex; align-items:center; gap:10px;">
+                                    <span>显示条数:</span>
+                                    <el-select v-model="recentLimit" placeholder="选择数量" @change="loadDashboardData" style="width:120px;">
+                                        <el-option label="10" :value="10"></el-option>
+                                        <el-option label="30" :value="30"></el-option>
+                                        <el-option label="100" :value="100"></el-option>
+                                    </el-select>
+                                </div>
                                 <el-table :data="recentTasks" style="width: 100%">
                                     <el-table-column prop="name" label="任务名称" width="180"></el-table-column>
                                     <el-table-column label="任务类型" width="120">
@@ -338,12 +353,28 @@
                         <!-- 任务列表标签页 -->
                         <el-tab-pane label="任务列表" name="tasks">
                             <!-- 分组过滤器 -->
-                            <div class="group-filter">
+                            <div class="group-filter filter-bar">
+                                <el-select v-model="selectedNamespace" placeholder="选择Namespace" @change="loadTasks" clearable>
+                                    <el-option label="全部Namespace" value=""></el-option>
+                                    <el-option v-for="ns in allNamespaces" :key="ns" :label="ns" :value="ns"></el-option>
+                                </el-select>
                                 <el-select v-model="selectedGroup" placeholder="选择分组" @change="loadTasksByGroup" clearable>
                                     <el-option label="全部分组" value=""></el-option>
                                     <el-option v-for="group in groups" :key="group" :label="group" :value="group"></el-option>
                                 </el-select>
-                                <el-button @click="refreshTasks" style="margin-left: 10px;">刷新</el-button>
+                                <el-select v-model="selectedTaskType" placeholder="选择任务类型" @change="loadTasks" clearable>
+                                    <el-option label="全部类型" value=""></el-option>
+                                    <el-option v-for="tt in allTaskTypes" :key="tt" :label="tt" :value="tt"></el-option>
+                                </el-select>
+                                <el-select v-model="selectedStatus" placeholder="选择状态" @change="loadTasks" clearable>
+                                    <el-option label="全部状态" value=""></el-option>
+                                    <el-option label="TODO" value="TODO"></el-option>
+                                    <el-option label="PROCESSING" value="PROCESSING"></el-option>
+                                    <el-option label="DONE" value="DONE"></el-option>
+                                    <el-option label="ERROR" value="ERROR"></el-option>
+                                    <el-option label="SKIP" value="SKIP"></el-option>
+                                </el-select>
+                                <el-button @click="refreshTasks">刷新</el-button>
                             </div>
                             
                             <!-- 任务表格 -->
@@ -389,8 +420,15 @@
                         
                         <!-- 分组管理标签页 -->
                         <el-tab-pane label="分组管理" name="groups">
+                            <div style="margin-bottom:10px;">
+                                <span>选择Namespace:</span>
+                                <el-select v-model="groupsNamespace" placeholder="选择Namespace" @change="loadGroups" style="width:200px; margin-left:10px;">
+                                    <el-option label="default" value="default"></el-option>
+                                    <el-option v-for="ns in allNamespaces" :key="ns" :label="ns" :value="ns"></el-option>
+                                </el-select>
+                            </div>
                             <el-row :gutter="20">
-                                                        <el-col :span="8" v-for="(groupStat, groupName) in safeGroupStats" :key="groupName">
+                                <el-col :span="8" v-for="(groupStat, groupName) in safeGroupStats" :key="groupName">
                             <el-card class="group-card">
                                 <template #header>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -402,7 +440,7 @@
                                             <div class="status-stats">
                                                 <template v-for="(count, status) in groupStat.status_counts" :key="status">
                                                     <span v-if="count && count > 0"
-                                                          :class="'group-stat-item status-' + status.toLowerCase()">
+                                                          :class="'group-stat-item status-' + (status.toLowerCase())">
                                                         {{ status }}: {{ count }}
                                                     </span>
                                                 </template>
@@ -425,7 +463,7 @@
                         <!-- 创建任务标签页 -->
                         <el-tab-pane label="创建任务" name="create">
                             <div class="create-task-form">
-                                <el-form :model="newTask" label-width="100px">
+                                    <el-form :model="newTask" label-width="100px">
                                     <el-form-item label="任务名称">
                                         <el-input v-model="newTask.name" placeholder="请输入任务名称"></el-input>
                                     </el-form-item>
@@ -434,6 +472,9 @@
                                             <el-option v-for="group in groups" :key="group" :label="group" :value="group"></el-option>
                                         </el-select>
                                     </el-form-item>
+                                        <el-form-item label="Namespace">
+                                            <el-input v-model="newTask.namespace" placeholder="请输入Namespace（默认default）"></el-input>
+                                        </el-form-item>
                                     <el-form-item label="任务类型">
                                         <el-input v-model="newTask.task_type" placeholder="请输入任务类型"></el-input>
                                     </el-form-item>

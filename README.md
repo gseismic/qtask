@@ -1,6 +1,9 @@
 # qtask
 一个轻量级的任务调度系统
 
+## Known Issues
+- 查询页面中，对于ERROR任务，提示放回成功后错误任务数量并没有减少，和预期不符合 
+
 ## Changelog
 
 ### 0.1.0
@@ -16,3 +19,6 @@
 - 新增: namespace和命令行清理
 ### 0.1.5
 - 新增: 可用版本(UI部分没有很好区分namespace)
+### 0.1.6
+- 新增: dashboard-UI部分区分namespace
+- 新增: 手动放回失败的任务
