@@ -145,8 +145,6 @@ class TaskStorage:
             return False
         task_info = json.loads(task_info_str)
 
-        print('task_info', task_info)
-
         # 从其他集合/列表中移除
         try:
             # 从ERROR列表中移除所有出现
@@ -174,12 +172,8 @@ class TaskStorage:
 
         self.redis.hset(self.task_info_key, task_id, json.dumps(task_info))
 
-        print('new task_info', task_info)
-
         # 清零重试次数
         self.redis.hdel(self.retries_key, task_id)
-
-        print('get_all_task_infos', self.get_all_task_infos())
 
         return True
     
