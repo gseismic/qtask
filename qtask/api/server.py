@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any, List
 from ..core.task_storage import TaskStorage
 from ..core.task_query import TaskQuery
 from ..core.task_cleaner import TaskCleaner
+from ..core.config import QTaskConfig
+from ..core.factory import TaskStorageFactory
 from datetime import datetime
 import os
 import uvicorn
@@ -40,12 +42,29 @@ class NamespaceClearRequest(BaseModel):
     namespaces: List[str]
 
 class QTaskServer:
-    def __init__(self):
+    def __init__(self, config: Optional[QTaskConfig] = None):
+        self.config = config or QTaskConfig()
+        self.factory = TaskStorageFactory(self.config)
         self.app = FastAPI(title="任务监控系统 API", version="1.0.0")
         self.static_dir = os.path.join(os.path.dirname(__file__), "..", "web","static")
         self._setup_middleware()
         self._setup_static_files()
         self._setup_routes()
+    
+    def _get_namespace_from_request(self, request: Request) -> str:
+        """从请求中获取namespace，优先级：查询参数 > Header > 默认值"""
+        # 从查询参数获取
+        namespace = request.query_params.get('namespace')
+        if namespace:
+            return namespace
+        
+        # 从Header获取
+        namespace = request.headers.get('X-QTask-Namespace')
+        if namespace:
+            return namespace
+        
+        # 返回默认值
+        return self.config.default_namespace
     
     def _setup_middleware(self):
         self.app.add_middleware(
@@ -78,9 +97,10 @@ class QTaskServer:
             raise HTTPException(status_code=404, detail="Query page not found")
 
         @self.app.get("/api/stats")
-        async def get_stats():
+        async def get_stats(request: Request):
             """获取系统统计信息"""
-            storage = TaskStorage()
+            namespace = self._get_namespace_from_request(request)
+            storage = self.factory.get_storage(namespace)
             retry_stats = storage.get_all_retries()
             
             return {
@@ -94,15 +114,17 @@ class QTaskServer:
             }
 
         @self.app.get("/api/tasks")
-        async def get_all_tasks():
+        async def get_all_tasks(request: Request):
             """获取所有任务详细信息"""
-            storage = TaskStorage()
+            namespace = self._get_namespace_from_request(request)
+            storage = self.factory.get_storage(namespace)
             return storage.get_all_queues_status()
 
         @self.app.get("/api/tasks/group/{group_name}")
-        async def get_tasks_by_group(group_name: str):
+        async def get_tasks_by_group(group_name: str, request: Request):
             """获取指定分组的任务"""
-            storage = TaskStorage()
+            namespace = self._get_namespace_from_request(request)
+            storage = self.factory.get_storage(namespace)
             tasks = storage.get_tasks_by_group(group_name)
             
             if not tasks:
@@ -115,25 +137,32 @@ class QTaskServer:
             }
 
         @self.app.get("/api/groups")
-        async def get_all_groups():
+        async def get_all_groups(request: Request):
             """获取所有任务分组"""
-            storage = TaskStorage()
+            namespace = self._get_namespace_from_request(request)
+            storage = self.factory.get_storage(namespace)
             groups = storage.get_all_groups()
             
-            # 统计每个分组的任务数量
+            # 统计每个分组的任务数量，包含namespace信息
             group_stats = {}
             all_tasks = storage.get_all_task_infos()
             
             for group in groups:
                 group_tasks = [task for task in all_tasks.values() if task.get('group', 'default') == group]
                 status_counts = {}
+                namespace_counts = {}
+                
                 for task in group_tasks:
                     status = task.get('status', 'TODO')
                     status_counts[status] = status_counts.get(status, 0) + 1
+                    
+                    task_namespace = task.get('namespace', 'default')
+                    namespace_counts[task_namespace] = namespace_counts.get(task_namespace, 0) + 1
                 
                 group_stats[group] = {
                     'total': len(group_tasks),
-                    'status_counts': status_counts
+                    'status_counts': status_counts,
+                    'namespace_counts': namespace_counts
                 }
             
             return {
@@ -142,9 +171,10 @@ class QTaskServer:
             }
 
         @self.app.get("/api/tasks/{queue_name}")
-        async def get_tasks_by_queue(queue_name: str):
+        async def get_tasks_by_queue(queue_name: str, request: Request):
             """获取指定队列的任务信息"""
-            storage = TaskStorage()
+            namespace = self._get_namespace_from_request(request)
+            storage = self.factory.get_storage(namespace)
             detailed_info = storage.get_all_queues_status()
             queue_name_upper = queue_name.upper()
             
@@ -161,17 +191,16 @@ class QTaskServer:
             }
 
         @self.app.post("/api/tasks", response_model=TaskResponse)
-        async def create_task(task: TaskRequest):
+        async def create_task(task: TaskRequest, request: Request):
             """创建新任务"""
-            from ..core.task_publisher import TaskPublisher
-            
-            publisher = TaskPublisher()
-            task_id = publisher.publish_named_task(
-                name=task.name,
+            namespace = self._get_namespace_from_request(request)
+            publisher = self.factory.get_publisher(namespace)
+            task_id = publisher.publish(
                 task_type=task.task_type,
+                name=task.name,
+                data=task.params,
                 group=task.group,
-                description=task.description,
-                **task.params
+                description=task.description
             )
             
             return TaskResponse(
@@ -180,11 +209,26 @@ class QTaskServer:
             )
 
         @self.app.get("/api/dashboard")
-        async def get_dashboard_data():
+        async def get_dashboard_data(request: Request):
             """获取仪表盘数据"""
-            storage = TaskStorage()
+            namespace = self._get_namespace_from_request(request)
+            storage = self.factory.get_storage(namespace)
             
-            # 基础统计
+            # 获取所有namespace统计
+            all_namespaces = storage.get_all_namespaces()
+            namespace_stats = {}
+            
+            for ns_name in all_namespaces:
+                ns_storage = self.factory.get_storage(ns_name)
+                namespace_stats[ns_name] = {
+                    'todo_count': ns_storage.redis.llen(ns_storage.queues['TODO']),
+                    'done_count': ns_storage.redis.scard(ns_storage.queues['DONE']),
+                    'skip_count': ns_storage.redis.llen(ns_storage.queues['SKIP']),
+                    'error_count': ns_storage.redis.llen(ns_storage.queues['ERROR']),
+                    'total_retries': sum(ns_storage.get_all_retries().values() or [0])
+                }
+            
+            # 基础统计（默认namespace）
             stats = {
                 'todo_count': storage.redis.llen(storage.queues['TODO']),
                 'done_count': storage.redis.scard(storage.queues['DONE']),
@@ -221,11 +265,15 @@ class QTaskServer:
                     'group': task_info.get('group', 'default'),
                     'status': task_info.get('status', 'TODO'),
                     'created_time': task_info.get('created_time'),
-                    'duration': task_info.get('duration')
+                    'start_time': task_info.get('start_time'),  # 添加start_time字段
+                    'processed_time': task_info.get('processed_time'),
+                    'duration': task_info.get('duration'),
+                    'namespace': task_info.get('namespace', 'default')
                 })
             
             return {
                 'stats': stats,
+                'namespace_stats': namespace_stats,
                 'group_stats': group_stats,
                 'recent_tasks': recent_tasks,
                 'timestamp': datetime.now().isoformat()
@@ -235,8 +283,11 @@ class QTaskServer:
         async def get_namespaces():
             """获取所有namespace"""
             try:
-                storage = TaskStorage()
-                namespaces = storage.get_all_namespaces()
+                # 获取所有已缓存的namespace
+                namespaces = self.factory.get_all_namespaces()
+                if not namespaces:
+                    # 如果没有缓存，至少返回默认namespace
+                    namespaces = [self.config.default_namespace]
                 return {"namespaces": namespaces}
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
@@ -258,7 +309,8 @@ class QTaskServer:
                     }
                 
                 for namespace in namespaces:
-                    query = TaskQuery(TaskStorage(namespace=namespace))
+                    storage = self.factory.get_storage(namespace)
+                    query = TaskQuery(storage)
                     
                     # 构建查询条件
                     filters = {}
@@ -307,7 +359,8 @@ class QTaskServer:
                     raise HTTPException(status_code=400, detail="No namespaces selected")
                 
                 for namespace in namespaces:
-                    cleaner = TaskCleaner(TaskStorage(namespace=namespace))
+                    storage = self.factory.get_storage(namespace)
+                    cleaner = TaskCleaner(storage)
                     result = cleaner.delete_tasks(request.task_ids)
                     
                     total_result["success"] += result["success"]
@@ -327,7 +380,7 @@ class QTaskServer:
                 results = {}
                 
                 for namespace in request.namespaces:
-                    storage = TaskStorage(namespace=namespace)
+                    storage = self.factory.get_storage(namespace)
                     deleted_count = storage.clear_namespace(namespace)
                     results[namespace] = deleted_count
                     total_deleted += deleted_count

@@ -154,6 +154,50 @@
             font-size: 11px;
             font-weight: 600;
         }
+        
+        .namespace-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .namespace-card h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+            font-weight: 600;
+        }
+        
+        .namespace-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .namespace-stat-item {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-block;
+        }
+        
+        .namespace-stat-item.todo { background: #fff3cd; color: #856404; }
+        .namespace-stat-item.done { background: #d4edda; color: #155724; }
+        .namespace-stat-item.error { background: #f8d7da; color: #721c24; }
+        .namespace-stat-item.skip { background: #e2e3e5; color: #383d41; }
+        
+        .namespace-tag {
+            display: inline-block;
+            padding: 2px 6px;
+            margin: 2px;
+            background: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 10px;
+            font-size: 11px;
+            color: #495057;
+        }
     </style>
 </head>
 <body>
@@ -225,10 +269,28 @@
                                 </el-col>
                             </el-row>
                             
+                            <!-- Namespace统计 -->
+                            <el-card header="Namespace 统计" style="margin-top: 20px;">
+                                <el-row :gutter="20">
+                                    <el-col :span="8" v-for="(namespaceStat, namespaceName) in namespaceStats" :key="namespaceName">
+                                        <div class="namespace-card">
+                                            <h4>{{ namespaceName }}</h4>
+                                            <div class="namespace-stats">
+                                                <span class="namespace-stat-item todo">待处理: {{ namespaceStat.todo_count }}</span>
+                                                <span class="namespace-stat-item done">已完成: {{ namespaceStat.done_count }}</span>
+                                                <span class="namespace-stat-item error">错误: {{ namespaceStat.error_count }}</span>
+                                                <span class="namespace-stat-item skip">跳过: {{ namespaceStat.skip_count }}</span>
+                                            </div>
+                                        </div>
+                                    </el-col>
+                                </el-row>
+                            </el-card>
+                            
                             <el-card header="最近任务" style="margin-top: 20px;">
                                 <el-table :data="recentTasks" style="width: 100%">
                                     <el-table-column prop="name" label="任务名称" width="200"></el-table-column>
-                                    <el-table-column prop="group" label="分组" width="120"></el-table-column>
+                                    <el-table-column prop="group" label="分组" width="100"></el-table-column>
+                                    <el-table-column prop="namespace" label="Namespace" width="100"></el-table-column>
                                     <el-table-column label="状态" width="100">
                                         <template #default="scope">
                                             <span :class="'status-tag status-' + scope.row.status.toLowerCase()">
@@ -241,9 +303,14 @@
                                             {{ formatTime(scope.row.created_time) }}
                                         </template>
                                     </el-table-column>
+                                    <el-table-column label="处理时刻" width="180">
+                                        <template #default="scope">
+                                            {{ formatTime(scope.row.processed_time) }}
+                                        </template>
+                                    </el-table-column>
                                     <el-table-column label="处理时长" width="100">
                                         <template #default="scope">
-                                            {{ scope.row.duration ? scope.row.duration + 's' : '-' }}
+                                            {{ formatDuration(scope.row) }}
                                         </template>
                                     </el-table-column>
                                 </el-table>
@@ -263,29 +330,35 @@
                             
                             <!-- 任务表格 -->
                             <el-table :data="tasks" style="width: 100%" class="task-table">
-                                <el-table-column label="任务ID" width="100">
+                                <el-table-column label="任务ID" width="80">
                                     <template #default="scope">
                                         <span class="task-id">{{ getShortId(scope.row.id) }}</span>
                                     </template>
                                 </el-table-column>
-                                <el-table-column prop="name" label="任务名称" width="200"></el-table-column>
-                                <el-table-column prop="group" label="分组" width="120"></el-table-column>
+                                <el-table-column prop="name" label="任务名称" width="150"></el-table-column>
+                                <el-table-column prop="group" label="分组" width="100"></el-table-column>
+                                <el-table-column prop="namespace" label="Namespace" width="100"></el-table-column>
                                 <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
-                                <el-table-column label="状态" width="100">
+                                <el-table-column label="状态" width="120">
                                     <template #default="scope">
                                         <span :class="'status-tag status-' + scope.row.status.toLowerCase()">
                                             {{ scope.row.status }}
                                         </span>
                                     </template>
                                 </el-table-column>
-                                <el-table-column label="创建时间" width="180">
+                                <el-table-column label="创建时间" width="140">
                                     <template #default="scope">
                                         {{ formatTime(scope.row.created_time) }}
                                     </template>
                                 </el-table-column>
-                                <el-table-column label="处理时长" width="100">
+                                <el-table-column label="处理时刻" width="140">
                                     <template #default="scope">
-                                        {{ scope.row.duration ? scope.row.duration + 's' : '-' }}
+                                        {{ formatTime(scope.row.processed_time) }}
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="处理时长" width="80">
+                                    <template #default="scope">
+                                        {{ formatDuration(scope.row) }}
                                     </template>
                                 </el-table-column>
                             </el-table>
@@ -303,12 +376,20 @@
                                     </div>
                                 </template>
                                         <div class="group-stats">
-                                            <template v-for="(count, status) in groupStat.status_counts" :key="status">
-                                                <span v-if="count && count > 0"
-                                                      :class="'group-stat-item status-' + status.toLowerCase()">
-                                                    {{ status }}: {{ count }}
-                                                </span>
-                                            </template>
+                                            <div class="status-stats">
+                                                <template v-for="(count, status) in groupStat.status_counts" :key="status">
+                                                    <span v-if="count && count > 0"
+                                                          :class="'group-stat-item status-' + status.toLowerCase()">
+                                                        {{ status }}: {{ count }}
+                                                    </span>
+                                                </template>
+                                            </div>
+                                            <div class="namespace-stats" v-if="groupStat.namespace_counts">
+                                                <small style="color: #666; margin-top: 5px; display: block;">Namespace分布:</small>
+                                                <template v-for="(count, namespace) in groupStat.namespace_counts" :key="namespace">
+                                                    <span class="namespace-tag">{{ namespace }}: {{ count }}</span>
+                                                </template>
+                                            </div>
                                         </div>
                                         <el-button size="small" @click="viewGroupTasks(groupName)" style="margin-top: 15px;">
                                             查看任务

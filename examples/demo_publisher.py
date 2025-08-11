@@ -14,47 +14,53 @@ def main():
     print("Publishing tasks...")
     
     # 邮件任务
-    task_id1 = publisher.publish_with_params(
-        'email', 
+    task_id1 = publisher.publish(
+        task_type='email',
         name="Send Welcome Email",
+        data={
+            'to': 'user@example.com',
+            'subject': 'Welcome!',
+            'body': 'Welcome to our service!'
+        },
         group="notification",
-        description="Send welcome email to new user",
-        to='user@example.com',
-        subject='Welcome!',
-        body='Welcome to our service!'
+        description="Send welcome email to new user"
     )
     print(f"Published email task: {task_id1}")
     
     # 数据处理任务
-    task_id2 = publisher.publish_with_params(
-        'data_processing',
-        name="Process CSV Data", 
+    task_id2 = publisher.publish(
+        task_type='data_processing',
+        name="Process CSV Data",
+        data={
+            'file_path': '/tmp/data.csv',
+            'operation': 'clean'
+        },
         group="batch",
-        description="Process uploaded CSV file",
-        file_path='/tmp/data.csv',
-        operation='clean'
+        description="Process uploaded CSV file"
     )
     print(f"Published data processing task: {task_id2}")
     
     # 报告生成任务
-    task_id3 = publisher.publish_with_params(
-        'report',
+    task_id3 = publisher.publish(
+        task_type='report',
         name="Generate Monthly Report",
-        group="reports", 
-        description="Generate monthly sales report",
-        report_type='monthly',
-        month='2024-01'
+        data={
+            'report_type': 'monthly',
+            'month': '2024-01'
+        },
+        group="reports",
+        description="Generate monthly sales report"
     )
     print(f"Published report task: {task_id3}")
     
-    # 默认任务
+    # 简单任务（无数据）
     task_id4 = publisher.publish(
-        "simple task data",
+        task_type="simple",
         name="Simple Task",
         group="misc",
-        description="A simple task without specific type"
+        description="A simple task without specific data"
     )
-    print(f"Published default task: {task_id4}")
+    print(f"Published simple task: {task_id4}")
     
     print("All tasks published successfully!")
 

@@ -23,6 +23,7 @@ const app = createApp({
             recentTasks: [],
             groups: [],
             groupStats: {},
+            namespaceStats: {},
             
             // 图表实例
             statusChart: null,
@@ -53,7 +54,8 @@ const app = createApp({
             for (const [groupName, groupData] of Object.entries(this.groupStats || {})) {
                 result[groupName] = {
                     total: groupData?.total || 0,
-                    status_counts: groupData?.status_counts || {}
+                    status_counts: groupData?.status_counts || {},
+                    namespace_counts: groupData?.namespace_counts || {}
                 };
             }
             return result;
@@ -126,6 +128,7 @@ const app = createApp({
                 
                 this.stats = data.stats;
                 this.groupStats = data.group_stats;
+                this.namespaceStats = data.namespace_stats || {};
                 this.recentTasks = data.recent_tasks;
                 this.lastUpdate = this.formatTime(data.timestamp);
                 
@@ -181,7 +184,9 @@ const app = createApp({
                                 created_time: taskInfo.created_time,
                                 start_time: taskInfo.start_time,
                                 end_time: taskInfo.end_time,
+                                processed_time: taskInfo.processed_time,
                                 duration: taskInfo.duration,
+                                namespace: taskInfo.namespace || 'default',
                                 data: task.data
                             });
                         });
@@ -198,7 +203,9 @@ const app = createApp({
                                 created_time: taskInfo.created_time,
                                 start_time: taskInfo.start_time,
                                 end_time: taskInfo.end_time,
+                                processed_time: taskInfo.processed_time,
                                 duration: taskInfo.duration,
+                                namespace: taskInfo.namespace || 'default',
                                 data: taskInfo.data
                             });
                         });
@@ -236,7 +243,9 @@ const app = createApp({
                     created_time: task.created_time,
                     start_time: task.start_time,
                     end_time: task.end_time,
+                    processed_time: task.processed_time,
                     duration: task.duration,
+                    namespace: task.namespace || 'default',
                     data: task.data
                 }));
                 
@@ -426,46 +435,45 @@ const app = createApp({
             
             try {
                 // 更新状态分布图 - ECharts
-                if (this.statusChart) {
+                if (this.statusChart && this.stats) {
                     const statusData = [
                         {value: this.stats.todo_count || 0, name: '待处理', itemStyle: {color: '#ffc107'}},
                         {value: this.stats.done_count || 0, name: '已完成', itemStyle: {color: '#28a745'}},
                         {value: this.stats.error_count || 0, name: '错误', itemStyle: {color: '#dc3545'}},
-                        {value: this.stats.null_count || 0, name: '无效', itemStyle: {color: '#6c757d'}}
+                        {value: this.stats.skip_count || 0, name: '跳过', itemStyle: {color: '#6c757d'}}  // 修正为skip_count
                     ];
                     
                     this.statusChart.setOption({
                         series: [{
+                            name: '任务状态',
+                            type: 'pie',
                             data: statusData
                         }]
-                    });
+                    }, false);  // 不合并选项
                 }
                 
                 // 更新分组统计图 - ECharts
-                if (this.groupChart && this.groupStats) {
+                if (this.groupChart && this.groupStats && Object.keys(this.groupStats).length > 0) {
                     const groupNames = Object.keys(this.groupStats);
                     const groupCounts = groupNames.map(name => this.groupStats[name]?.total || 0);
                     
                     this.groupChart.setOption({
                         xAxis: {
+                            type: 'category',
                             data: groupNames
                         },
                         series: [{
+                            name: '任务数量',
+                            type: 'bar',
                             data: groupCounts
                         }]
-                    });
+                    }, false);  // 不合并选项
                 }
             } catch (error) {
                 console.error('更新图表失败:', error);
-                // 图表已损坏，重置图表实例
-                this.statusChart = null;
-                this.groupChart = null;
-                // 延迟重新初始化，避免立即重试
-                setTimeout(() => {
-                    if (!this.chartsDisabled) {
-                        this.initCharts();
-                    }
-                }, 2000);
+                // 图表已损坏，禁用图表功能
+                this.chartsDisabled = true;
+                console.warn('图表功能已禁用以避免持续错误');
             }
         },
         
@@ -525,6 +533,58 @@ const app = createApp({
                 return date.toLocaleString('zh-CN');
             } catch (error) {
                 return timeString;
+            }
+        },
+        
+        formatDuration(task) {
+            // 优先使用duration字段（但要检查是否大于0）
+            if (task.duration !== null && task.duration !== undefined && task.duration > 0) {
+                return this.formatTimeUnit(task.duration);
+            }
+            
+            // 如果duration为0或null，但任务已完成，尝试使用start_time和processed_time计算
+            if (task.status === 'DONE' || task.status === 'ERROR' || task.status === 'SKIP') {
+                // 只使用start_time和processed_time计算真正的处理时长
+                if (task.start_time && task.processed_time) {
+                    try {
+                        const startTime = new Date(task.start_time);
+                        const endTime = new Date(task.processed_time);
+                        const durationMs = endTime - startTime;
+                        if (durationMs >= 0) {  // 包括0的情况
+                            const durationSec = durationMs / 1000;
+                            return this.formatTimeUnit(durationSec);
+                        }
+                    } catch (error) {
+                        // 时间解析失败，使用备选方案
+                        return '<1s';
+                    }
+                }
+                
+                // 如果没有start_time，对于已完成的任务显示<1s而不是"未知"
+                // 因为任务确实完成了，只是时间记录有问题
+                return '<1s';
+            }
+            
+            // 如果任务还在处理中，显示状态
+            if (task.status === 'PROCESSING') {
+                return '处理中...';
+            } else if (task.status === 'TODO') {
+                return '待处理';
+            }
+            
+            return '-';
+        },
+        
+        formatTimeUnit(seconds) {
+            // 智能选择时间单位
+            if (seconds < 1) {
+                return '<1s';
+            } else if (seconds < 60) {
+                return Math.round(seconds * 100) / 100 + 's';
+            } else if (seconds < 3600) {
+                return Math.round(seconds / 60 * 100) / 100 + 'min';
+            } else {
+                return Math.round(seconds / 3600 * 100) / 100 + 'h';
             }
         },
         

@@ -32,7 +32,9 @@ class TaskStorage:
             'status': 'TODO',
             'start_time': None,
             'end_time': None,
-            'duration': None
+            'processed_time': None,
+            'duration': None,
+            'namespace': self.namespace
         }
         self.redis.hset(self.task_info_key, task_id, json.dumps(task_info))
     
@@ -80,6 +82,8 @@ class TaskStorage:
             task_info = json.loads(task_info_str)
             end_time = datetime.now()
             task_info['end_time'] = end_time.isoformat()
+            task_info['processed_time'] = end_time.isoformat()  # 专门的处理时刻字段
+            task_info['namespace'] = self.namespace  # 添加namespace信息
             task_info['status'] = result_type
             
             # 计算处理时长
