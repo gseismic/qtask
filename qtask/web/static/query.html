@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务查询和清理 - QTask</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            color: #2c3e50;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .query-form {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #34495e;
+        }
+        
+        input, select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #229954;
+        }
+        
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background: #e67e22;
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        
+        .results-section {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .results-header {
+            background: #34495e;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .results-content {
+            padding: 20px;
+        }
+        
+        .task-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .task-table th,
+        .task-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .task-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .task-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-done { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-skip { background: #fff3cd; color: #856404; }
+        .status-todo { background: #cce5ff; color: #004085; }
+        .status-processing { background: #e2e3e5; color: #383d41; }
+        
+        .namespace-badge {
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #e7f3ff;
+            color: #0066cc;
+            border: 1px solid #b3d9ff;
+        }
+        
+        .checkbox-cell {
+            width: 40px;
+            text-align: center;
+        }
+        
+        .selection-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .cleanup-actions {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        /* 快速查询样式 */
+        .quick-query-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .quick-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+        
+        .button-group h3 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .button-group .btn {
+            padding: 8px 12px;
+            font-size: 13px;
+            text-align: left;
+        }
+        
+        /* Namespace样式 */
+        .namespace-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .namespace-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .namespace-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        .namespace-item:hover {
+            background: #e9ecef;
+        }
+        
+        .namespace-item input[type="checkbox"] {
+            margin: 0;
+        }
+        
+        .namespace-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+            }
+            
+            .task-table {
+                font-size: 14px;
+            }
+            
+            .task-table th,
+            .task-table td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 任务查询和清理</h1>
+            <p>查询任务，选择后进行批量清理操作</p>
+        </div>
+        
+        <!-- 快速查询按钮 -->
+        <div class="quick-query-section">
+            <h2>🚀 快速查询</h2>
+            <div class="quick-buttons">
+                <div class="button-group">
+                    <h3>当前状态</h3>
+                    <button class="btn btn-primary" onclick="quickQuery({statuses: 'TODO'})">📋 未处理任务</button>
+                    <button class="btn btn-success" onclick="quickQuery({statuses: 'DONE'})">✅ 已完成任务</button>
+                    <button class="btn btn-warning" onclick="quickQuery({statuses: 'ERROR'})">❌ 错误任务</button>
+                    <button class="btn btn-secondary" onclick="quickQuery({statuses: 'SKIP'})">⏭️ 跳过任务</button>
+                </div>
+                
+                <div class="button-group">
+                    <h3>最近24小时</h3>
+                    <button class="btn btn-primary" onclick="quickQuery({statuses: 'TODO', after: '1 days ago'})">📋 24h未处理</button>
+                    <button class="btn btn-success" onclick="quickQuery({statuses: 'DONE', after: '1 days ago'})">✅ 24h已完成</button>
+                    <button class="btn btn-warning" onclick="quickQuery({statuses: 'ERROR', after: '1 days ago'})">❌ 24h错误</button>
+                    <button class="btn btn-secondary" onclick="quickQuery({statuses: 'SKIP', after: '1 days ago'})">⏭️ 24h跳过</button>
+                </div>
+                
+                <div class="button-group">
+                    <h3>最近7天</h3>
+                    <button class="btn btn-primary" onclick="quickQuery({statuses: 'TODO', after: '7 days ago'})">📋 7天未处理</button>
+                    <button class="btn btn-success" onclick="quickQuery({statuses: 'DONE', after: '7 days ago'})">✅ 7天已完成</button>
+                    <button class="btn btn-warning" onclick="quickQuery({statuses: 'ERROR', after: '7 days ago'})">❌ 7天错误</button>
+                    <button class="btn btn-secondary" onclick="quickQuery({statuses: 'SKIP', after: '7 days ago'})">⏭️ 7天跳过</button>
+                </div>
+                
+                <div class="button-group">
+                    <h3>最近30天</h3>
+                    <button class="btn btn-primary" onclick="quickQuery({statuses: 'TODO', after: '30 days ago'})">📋 30天未处理</button>
+                    <button class="btn btn-success" onclick="quickQuery({statuses: 'DONE', after: '30 days ago'})">✅ 30天已完成</button>
+                    <button class="btn btn-warning" onclick="quickQuery({statuses: 'ERROR', after: '30 days ago'})">❌ 30天错误</button>
+                    <button class="btn btn-secondary" onclick="quickQuery({statuses: 'SKIP', after: '30 days ago'})">⏭️ 30天跳过</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Namespace选择 -->
+        <div class="namespace-section">
+            <h2>🏷️ Namespace 选择</h2>
+            <div id="namespaceCheckboxes" class="namespace-checkboxes">
+                <!-- 动态生成namespace复选框 -->
+            </div>
+            <div class="namespace-actions">
+                <button type="button" class="btn btn-secondary" onclick="selectAllNamespaces()">全选</button>
+                <button type="button" class="btn btn-secondary" onclick="selectNoNamespaces()">取消全选</button>
+                <button type="button" class="btn btn-danger" onclick="clearSelectedNamespaces()">🗑️ 清空选中namespace</button>
+            </div>
+        </div>
+        
+        <div class="query-form">
+            <h2>查询条件</h2>
+            <form id="queryForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="types">任务类型</label>
+                        <input type="text" id="types" name="types" placeholder="email,data_processing (逗号分隔)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="groups">任务分组</label>
+                        <input type="text" id="groups" name="groups" placeholder="notification,batch (逗号分隔)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="statuses">任务状态</label>
+                        <input type="text" id="statuses" name="statuses" placeholder="DONE,ERROR,SKIP (逗号分隔)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="before">创建时间之前</label>
+                        <input type="text" id="before" name="before" placeholder="7 days ago 或 2024-01-01">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="after">创建时间之后</label>
+                        <input type="text" id="after" name="after" placeholder="30 days ago 或 2024-01-01">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="name_contains">名称包含</label>
+                        <input type="text" id="name_contains" name="name_contains" placeholder="关键词">
+                    </div>
+                </div>
+                
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary">🔍 查询任务</button>
+                    <button type="button" class="btn btn-secondary" onclick="clearForm()">🗑️ 清空条件</button>
+                </div>
+            </form>
+        </div>
+        
+        <div id="resultsSection" class="results-section hidden">
+            <div class="results-header">
+                <div>
+                    <h2>查询结果</h2>
+                    <span id="resultCount">找到 0 个任务</span>
+                </div>
+            </div>
+            
+            <div class="results-content">
+                <div class="selection-controls">
+                    <button type="button" class="btn btn-secondary" onclick="selectAll()">✅ 全选</button>
+                    <button type="button" class="btn btn-secondary" onclick="selectNone()">❌ 取消全选</button>
+                    <button type="button" class="btn btn-secondary" onclick="invertSelection()">🔄 反选</button>
+                    <span id="selectedCount">已选择 0 个任务</span>
+                </div>
+                
+                <div id="loadingDiv" class="loading hidden">
+                    🔄 查询中...
+                </div>
+                
+                <div id="errorDiv" class="error hidden"></div>
+                <div id="successDiv" class="success hidden"></div>
+                
+                <table id="taskTable" class="task-table hidden">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-cell">
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                            </th>
+                            <th>Namespace</th>
+                            <th>任务名称</th>
+                            <th>分组</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>重试次数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskTableBody">
+                    </tbody>
+                </table>
+                
+                <div class="cleanup-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteTasks()" id="deleteBtn" disabled>🗑️ 删除选中任务</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTasks = [];
+        let selectedTasks = new Set();
+        let availableNamespaces = [];
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadNamespaces();
+        });
+        
+        document.getElementById('queryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            queryTasks();
+        });
+        
+        // 加载所有namespace
+        async function loadNamespaces() {
+            try {
+                const response = await fetch('/api/namespaces');
+                if (response.ok) {
+                    const data = await response.json();
+                    availableNamespaces = data.namespaces;
+                    renderNamespaceCheckboxes();
+                }
+            } catch (error) {
+                console.error('Failed to load namespaces:', error);
+                availableNamespaces = ['default'];
+                renderNamespaceCheckboxes();
+            }
+        }
+        
+        // 渲染namespace复选框
+        function renderNamespaceCheckboxes() {
+            const container = document.getElementById('namespaceCheckboxes');
+            container.innerHTML = '';
+            
+            availableNamespaces.forEach(namespace => {
+                const item = document.createElement('div');
+                item.className = 'namespace-item';
+                item.innerHTML = `
+                    <input type="checkbox" id="ns-${namespace}" value="${namespace}" checked onchange="updateNamespaceSelection()">
+                    <label for="ns-${namespace}">${namespace}</label>
+                `;
+                container.appendChild(item);
+            });
+            
+            // 初始化选择状态
+            updateNamespaceSelection();
+        }
+        
+        // 快速查询
+        function quickQuery(filters) {
+            // 填充表单
+            Object.keys(filters).forEach(key => {
+                const input = document.getElementById(key);
+                if (input) {
+                    input.value = filters[key];
+                }
+            });
+            
+            // 执行查询
+            queryTasks();
+        }
+        
+        async function queryTasks() {
+            const formData = new FormData(document.getElementById('queryForm'));
+            const filters = {};
+            
+            // 收集非空的查询条件
+            for (let [key, value] of formData.entries()) {
+                if (value.trim()) {
+                    filters[key] = value;
+                }
+            }
+            
+            // 收集选中的namespace（总是发送，即使是空数组）
+            const selectedNamespaces = getSelectedNamespaces();
+            filters.namespaces = selectedNamespaces;
+            
+            // 如果没有选择任何namespace，给出提示
+            if (selectedNamespaces.length === 0) {
+                showError('请至少选择一个namespace进行查询');
+                return;
+            }
+            
+            showLoading(true);
+            hideMessages();
+            
+            try {
+                const response = await fetch('/api/tasks/find', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(filters)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                currentTasks = data.tasks;
+                selectedTasks.clear();
+                
+                displayResults(data);
+                
+            } catch (error) {
+                showError('查询失败: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function displayResults(data) {
+            document.getElementById('resultsSection').classList.remove('hidden');
+            document.getElementById('resultCount').textContent = `找到 ${data.total} 个任务`;
+            
+            if (data.total === 0) {
+                document.getElementById('taskTable').classList.add('hidden');
+                return;
+            }
+            
+            document.getElementById('taskTable').classList.remove('hidden');
+            const tbody = document.getElementById('taskTableBody');
+            tbody.innerHTML = '';
+            
+            data.tasks.forEach(task => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="checkbox-cell">
+                        <input type="checkbox" value="${task.id}" onchange="updateSelection()">
+                    </td>
+                    <td><span class="namespace-badge">${escapeHtml(task.namespace || 'default')}</span></td>
+                    <td>${escapeHtml(task.name || '未命名任务')}</td>
+                    <td>${escapeHtml(task.group || 'default')}</td>
+                    <td><span class="status-badge status-${task.status.toLowerCase()}">${task.status}</span></td>
+                    <td>${formatDateTime(task.created_time)}</td>
+                    <td>${task.retry_count || 0}</td>
+                    <td>
+                        <button class="btn btn-danger" onclick="selectSingleTask('${task.id}')" style="padding: 4px 8px; font-size: 12px;">选择删除</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            updateSelectionCount();
+        }
+        
+        function selectSingleTask(taskId) {
+            const checkbox = document.querySelector(`input[value="${taskId}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                updateSelection();
+            }
+        }
+        
+        function updateSelection() {
+            selectedTasks.clear();
+            document.querySelectorAll('#taskTableBody input[type="checkbox"]:checked').forEach(cb => {
+                selectedTasks.add(cb.value);
+            });
+            
+            updateSelectionCount();
+            updateActionButtons();
+            updateSelectAllCheckbox();
+        }
+        
+        function updateSelectionCount() {
+            document.getElementById('selectedCount').textContent = `已选择 ${selectedTasks.size} 个任务`;
+        }
+        
+        function updateActionButtons() {
+            const hasSelection = selectedTasks.size > 0;
+            document.getElementById('deleteBtn').disabled = !hasSelection;
+        }
+        
+        function updateSelectAllCheckbox() {
+            const allCheckboxes = document.querySelectorAll('#taskTableBody input[type="checkbox"]');
+            const checkedCheckboxes = document.querySelectorAll('#taskTableBody input[type="checkbox"]:checked');
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            
+            if (checkedCheckboxes.length === 0) {
+                selectAllCheckbox.indeterminate = false;
+                selectAllCheckbox.checked = false;
+            } else if (checkedCheckboxes.length === allCheckboxes.length) {
+                selectAllCheckbox.indeterminate = false;
+                selectAllCheckbox.checked = true;
+            } else {
+                selectAllCheckbox.indeterminate = true;
+                selectAllCheckbox.checked = false;
+            }
+        }
+        
+        function selectAll() {
+            document.querySelectorAll('#taskTableBody input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+            });
+            updateSelection();
+        }
+        
+        function selectNone() {
+            document.querySelectorAll('#taskTableBody input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+            });
+            updateSelection();
+        }
+        
+        function invertSelection() {
+            document.querySelectorAll('#taskTableBody input[type="checkbox"]').forEach(cb => {
+                cb.checked = !cb.checked;
+            });
+            updateSelection();
+        }
+        
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            if (selectAllCheckbox.checked) {
+                selectAll();
+            } else {
+                selectNone();
+            }
+        }
+        
+        async function deleteTasks() {
+            if (selectedTasks.size === 0) {
+                showError('请先选择要删除的任务');
+                return;
+            }
+            
+            const selectedNamespaces = getSelectedNamespaces();
+            if (selectedNamespaces.length === 0) {
+                showError('请至少选择一个namespace进行删除操作');
+                return;
+            }
+            
+            if (!confirm(`确定要删除 ${selectedTasks.size} 个任务吗？\n\n⚠️ 删除后无法恢复！`)) {
+                return;
+            }
+            
+            showLoading(true);
+            hideMessages();
+            
+            try {
+                const selectedNamespaces = getSelectedNamespaces();
+                const response = await fetch('/api/tasks/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        task_ids: Array.from(selectedTasks),
+                        namespaces: selectedNamespaces
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success > 0) {
+                    showSuccess(`删除成功: ${result.success} 个任务${result.failed > 0 ? `, 失败: ${result.failed} 个` : ''}`);
+                    
+                    // 重新查询以刷新结果
+                    setTimeout(() => {
+                        queryTasks();
+                    }, 1000);
+                } else {
+                    showError(`删除失败: ${result.errors.join(', ')}`);
+                }
+                
+            } catch (error) {
+                showError('删除失败: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Namespace相关函数
+        function getSelectedNamespaces() {
+            const checkboxes = document.querySelectorAll('#namespaceCheckboxes input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+        
+        function updateNamespaceSelection() {
+            const selectedNamespaces = getSelectedNamespaces();
+            const totalNamespaces = availableNamespaces.length;
+            
+            // 更新选择状态显示
+            updateNamespaceSelectionDisplay(selectedNamespaces.length, totalNamespaces);
+            
+            // 启用/禁用相关按钮
+            updateNamespaceButtons(selectedNamespaces.length > 0);
+            
+            // 如果有查询结果，可以提示用户重新查询
+            if (currentTasks.length > 0) {
+                showInfo(`Namespace选择已更改，点击查询按钮以更新结果`);
+            }
+        }
+        
+        function updateNamespaceSelectionDisplay(selected, total) {
+            // 查找或创建选择状态显示元素
+            let statusElement = document.getElementById('namespaceStatus');
+            if (!statusElement) {
+                statusElement = document.createElement('span');
+                statusElement.id = 'namespaceStatus';
+                statusElement.style.marginLeft = '10px';
+                statusElement.style.fontSize = '14px';
+                statusElement.style.color = '#666';
+                
+                const namespaceHeader = document.querySelector('.namespace-section h2');
+                if (namespaceHeader) {
+                    namespaceHeader.appendChild(statusElement);
+                }
+            }
+            
+            statusElement.textContent = `(已选择 ${selected}/${total} 个namespace)`;
+        }
+        
+        function updateNamespaceButtons(hasSelection) {
+            const clearButton = document.querySelector('button[onclick="clearSelectedNamespaces()"]');
+            if (clearButton) {
+                clearButton.disabled = !hasSelection;
+                clearButton.style.opacity = hasSelection ? '1' : '0.5';
+            }
+        }
+        
+        function showInfo(message) {
+            // 显示信息提示（蓝色背景）
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'info';
+            infoDiv.textContent = message;
+            infoDiv.style.background = '#d1ecf1';
+            infoDiv.style.color = '#0c5460';
+            infoDiv.style.padding = '10px';
+            infoDiv.style.borderRadius = '4px';
+            infoDiv.style.margin = '10px 0';
+            infoDiv.style.fontSize = '14px';
+            
+            // 插入到结果区域上方
+            const resultsSection = document.getElementById('resultsSection');
+            if (resultsSection && !resultsSection.classList.contains('hidden')) {
+                resultsSection.insertBefore(infoDiv, resultsSection.firstChild);
+                
+                // 3秒后自动消失
+                setTimeout(() => {
+                    if (infoDiv.parentNode) {
+                        infoDiv.parentNode.removeChild(infoDiv);
+                    }
+                }, 3000);
+            }
+        }
+        
+        function selectAllNamespaces() {
+            document.querySelectorAll('#namespaceCheckboxes input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+            });
+            updateNamespaceSelection();
+        }
+        
+        function selectNoNamespaces() {
+            document.querySelectorAll('#namespaceCheckboxes input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+            });
+            updateNamespaceSelection();
+        }
+        
+        async function clearSelectedNamespaces() {
+            const selectedNamespaces = getSelectedNamespaces();
+            
+            if (selectedNamespaces.length === 0) {
+                showError('请先选择要清空的namespace');
+                return;
+            }
+            
+            if (!confirm(`确定要清空以下namespace的所有任务吗？\n\n${selectedNamespaces.join(', ')}\n\n⚠️ 此操作不可恢复！`)) {
+                return;
+            }
+            
+            showLoading(true);
+            hideMessages();
+            
+            try {
+                const response = await fetch('/api/namespaces/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        namespaces: selectedNamespaces
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                showSuccess(`清空成功: 共删除 ${result.total_deleted} 个数据项`);
+                
+                // 重新查询以刷新结果
+                setTimeout(() => {
+                    queryTasks();
+                }, 1000);
+                
+            } catch (error) {
+                showError('清空失败: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function clearForm() {
+            document.getElementById('queryForm').reset();
+            document.getElementById('resultsSection').classList.add('hidden');
+            currentTasks = [];
+            selectedTasks.clear();
+            hideMessages();
+        }
+        
+        function showLoading(show) {
+            document.getElementById('loadingDiv').classList.toggle('hidden', !show);
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorDiv');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successDiv');
+            successDiv.textContent = message;
+            successDiv.classList.remove('hidden');
+        }
+        
+        function hideMessages() {
+            document.getElementById('errorDiv').classList.add('hidden');
+            document.getElementById('successDiv').classList.add('hidden');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function formatDateTime(dateString) {
+            if (!dateString) return '-';
+            try {
+                return new Date(dateString).toLocaleString('zh-CN');
+            } catch {
+                return dateString;
+            }
+        }
+    </script>
+</body>
+</html>

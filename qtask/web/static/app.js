@@ -506,6 +506,10 @@ const app = createApp({
             ElMessage.success('数据已刷新');
         },
         
+        openQueryPage() {
+            window.open('/query.html', '_blank');
+        },
+        
         viewGroupTasks(groupName) {
             this.selectedGroup = groupName;
             this.activeTab = 'tasks';

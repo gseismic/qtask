@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from ..core.task_storage import TaskStorage
+from ..core.task_query import TaskQuery
+from ..core.task_cleaner import TaskCleaner
 from datetime import datetime
 import os
 import uvicorn
@@ -20,6 +22,22 @@ class TaskRequest(BaseModel):
 class TaskResponse(BaseModel):
     task_id: str
     message: str
+
+class TaskFindRequest(BaseModel):
+    types: Optional[str] = None
+    groups: Optional[str] = None
+    statuses: Optional[str] = None
+    before: Optional[str] = None
+    after: Optional[str] = None
+    name_contains: Optional[str] = None
+    namespaces: Optional[List[str]] = None
+
+class TaskDeleteRequest(BaseModel):
+    task_ids: List[str]
+    namespaces: Optional[List[str]] = None
+
+class NamespaceClearRequest(BaseModel):
+    namespaces: List[str]
 
 class QTaskServer:
     def __init__(self):
@@ -50,6 +68,14 @@ class QTaskServer:
             if os.path.exists(static_path):
                 return FileResponse(static_path)
             return {"message": "欢迎使用任务监控系统 API", "docs": "/docs"}
+        
+        @self.app.get("/query.html")
+        async def serve_query_page():
+            """提供查询页面"""
+            static_path = os.path.join(self.static_dir, "query.html")
+            if os.path.exists(static_path):
+                return FileResponse(static_path)
+            raise HTTPException(status_code=404, detail="Query page not found")
 
         @self.app.get("/api/stats")
         async def get_stats():
@@ -204,6 +230,115 @@ class QTaskServer:
                 'recent_tasks': recent_tasks,
                 'timestamp': datetime.now().isoformat()
             }
+        
+        @self.app.get("/api/namespaces")
+        async def get_namespaces():
+            """获取所有namespace"""
+            try:
+                storage = TaskStorage()
+                namespaces = storage.get_all_namespaces()
+                return {"namespaces": namespaces}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/api/tasks/find")
+        async def find_tasks(request: TaskFindRequest):
+            """查询任务"""
+            try:
+                # 支持多namespace查询
+                namespaces = request.namespaces if request.namespaces is not None else ['default']
+                all_tasks = []
+                
+                # 如果没有选择任何namespace，直接返回空结果
+                if not namespaces:
+                    return {
+                        'total': 0,
+                        'tasks': [],
+                        'namespaces': []
+                    }
+                
+                for namespace in namespaces:
+                    query = TaskQuery(TaskStorage(namespace=namespace))
+                    
+                    # 构建查询条件
+                    filters = {}
+                    if request.types:
+                        filters['types'] = request.types
+                    if request.groups:
+                        filters['groups'] = request.groups
+                    if request.statuses:
+                        filters['statuses'] = request.statuses
+                    if request.before:
+                        filters['before'] = request.before
+                    if request.after:
+                        filters['after'] = request.after
+                    if request.name_contains:
+                        filters['name_contains'] = request.name_contains
+                    
+                    # 执行查询
+                    task_ids = query.find_tasks(**filters)
+                    task_details = query.get_task_details(task_ids)
+                    
+                    # 为每个任务添加namespace信息
+                    for task in task_details:
+                        task['namespace'] = namespace
+                    
+                    all_tasks.extend(task_details)
+                
+                return {
+                    'total': len(all_tasks),
+                    'tasks': all_tasks,
+                    'namespaces': namespaces
+                }
+                
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/api/tasks/delete")
+        async def delete_tasks(request: TaskDeleteRequest):
+            """删除任务"""
+            try:
+                # 支持多namespace删除
+                namespaces = request.namespaces if request.namespaces is not None else ['default']
+                total_result = {"success": 0, "failed": 0, "errors": []}
+                
+                # 如果没有选择任何namespace，返回错误
+                if not namespaces:
+                    raise HTTPException(status_code=400, detail="No namespaces selected")
+                
+                for namespace in namespaces:
+                    cleaner = TaskCleaner(TaskStorage(namespace=namespace))
+                    result = cleaner.delete_tasks(request.task_ids)
+                    
+                    total_result["success"] += result["success"]
+                    total_result["failed"] += result["failed"]
+                    total_result["errors"].extend(result["errors"])
+                
+                return total_result
+                
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/api/namespaces/clear")
+        async def clear_namespaces(request: NamespaceClearRequest):
+            """清空指定namespace的所有任务"""
+            try:
+                total_deleted = 0
+                results = {}
+                
+                for namespace in request.namespaces:
+                    storage = TaskStorage(namespace=namespace)
+                    deleted_count = storage.clear_namespace(namespace)
+                    results[namespace] = deleted_count
+                    total_deleted += deleted_count
+                
+                return {
+                    "total_deleted": total_deleted,
+                    "namespace_results": results
+                }
+                
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
 
     def run(self, host: str, port: int, reload: bool = False):
         uvicorn.run(self.app, host=host, port=port, reload=reload)

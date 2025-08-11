@@ -3,16 +3,17 @@ import json
 from datetime import datetime
 
 class TaskStorage:
-    def __init__(self, host='localhost', port=6379, db=0, password=None):
+    def __init__(self, host='localhost', port=6379, db=0, password=None, namespace='default'):
         self.redis = redis.Redis(host=host, port=port, db=db, password=password)
+        self.namespace = namespace
         self.queues = {
-            'TODO': 'queue:todo',
-            'DONE': 'set:done',
-            'SKIP': 'list:skip',  # 重命名NULL为SKIP
-            'ERROR': 'list:error'
+            'TODO': f'queue:todo:{namespace}',
+            'DONE': f'set:done:{namespace}',
+            'SKIP': f'list:skip:{namespace}',
+            'ERROR': f'list:error:{namespace}'
         }
-        self.retries_key = 'hash:task_retries'
-        self.task_info_key = 'hash:task_info'  # 存储任务详细信息和时间
+        self.retries_key = f'hash:task_retries:{namespace}'
+        self.task_info_key = f'hash:task_info:{namespace}'
     
     # --- 核心方法 ---
     def add_task(self, task_id, task_data, name="", group="default", description=""):
@@ -184,3 +185,47 @@ class TaskStorage:
             'error_count': self.redis.llen(self.queues['ERROR']),
             'total_count': self.redis.llen(self.queues['TODO']) + self.redis.scard(self.queues['DONE']) + self.redis.llen(self.queues['SKIP']) + self.redis.llen(self.queues['ERROR'])
         }
+    
+    # --- Namespace管理方法 ---
+    def get_all_namespaces(self):
+        """获取所有namespace"""
+        namespaces = set()
+        # 扫描所有相关的key
+        for pattern in ['queue:todo:*', 'set:done:*', 'list:skip:*', 'list:error:*']:
+            keys = self.redis.keys(pattern)
+            for key in keys:
+                # 提取namespace
+                key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+                namespace = key_str.split(':')[-1]
+                namespaces.add(namespace)
+        return list(namespaces) if namespaces else ['default']
+    
+    def clear_namespace(self, namespace):
+        """清空指定namespace的所有任务"""
+        keys_to_delete = [
+            f'queue:todo:{namespace}',
+            f'set:done:{namespace}',
+            f'list:skip:{namespace}',
+            f'list:error:{namespace}',
+            f'hash:task_retries:{namespace}',
+            f'hash:task_info:{namespace}'
+        ]
+        
+        deleted_count = 0
+        for key in keys_to_delete:
+            if self.redis.exists(key):
+                self.redis.delete(key)
+                deleted_count += 1
+        
+        return deleted_count
+    
+    def get_namespace_statistics(self, namespace):
+        """获取指定namespace的统计信息"""
+        temp_storage = TaskStorage(
+            host=self.redis.connection_pool.connection_kwargs.get('host', 'localhost'),
+            port=self.redis.connection_pool.connection_kwargs.get('port', 6379),
+            db=self.redis.connection_pool.connection_kwargs.get('db', 0),
+            password=self.redis.connection_pool.connection_kwargs.get('password'),
+            namespace=namespace
+        )
+        return temp_storage.get_statistics()
