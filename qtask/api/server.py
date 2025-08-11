@@ -60,7 +60,7 @@ class QTaskServer:
             return {
                 'todo_count': storage.redis.llen(storage.queues['TODO']),
                 'done_count': storage.redis.scard(storage.queues['DONE']),
-                'null_count': storage.redis.llen(storage.queues['NULL']),
+                'skip_count': storage.redis.llen(storage.queues['SKIP']),
                 'error_count': storage.redis.llen(storage.queues['ERROR']),
                 'retry_stats': retry_stats,
                 'total_retries': sum(retry_stats.values()) if retry_stats else 0,
@@ -162,7 +162,7 @@ class QTaskServer:
             stats = {
                 'todo_count': storage.redis.llen(storage.queues['TODO']),
                 'done_count': storage.redis.scard(storage.queues['DONE']),
-                'null_count': storage.redis.llen(storage.queues['NULL']),
+                'skip_count': storage.redis.llen(storage.queues['SKIP']),
                 'error_count': storage.redis.llen(storage.queues['ERROR']),
                 'total_retries': sum(storage.get_all_retries().values() or [0])
             }
@@ -174,7 +174,7 @@ class QTaskServer:
             
             for group in groups:
                 group_tasks = [task for task in all_tasks.values() if task.get('group', 'default') == group]
-                status_counts = {'TODO': 0, 'PROCESSING': 0, 'DONE': 0, 'ERROR': 0, 'NULL': 0}
+                status_counts = {'TODO': 0, 'PROCESSING': 0, 'DONE': 0, 'ERROR': 0, 'SKIP': 0}
                 
                 for task in group_tasks:
                     status = task.get('status', 'TODO')
@@ -205,8 +205,8 @@ class QTaskServer:
                 'timestamp': datetime.now().isoformat()
             }
 
-    def run(self, host: str, port: int):
-        uvicorn.run(self.app, host=host, port=port)
+    def run(self, host: str, port: int, reload: bool = False):
+        uvicorn.run(self.app, host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":

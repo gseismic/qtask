@@ -8,7 +8,7 @@ class TaskStorage:
         self.queues = {
             'TODO': 'queue:todo',
             'DONE': 'set:done',
-            'NULL': 'list:null',
+            'SKIP': 'list:skip',  # 重命名NULL为SKIP
             'ERROR': 'list:error'
         }
         self.retries_key = 'hash:task_retries'
@@ -54,26 +54,26 @@ class TaskStorage:
             task_info['status'] = 'PROCESSING'
             self.redis.hset(self.task_info_key, task_id, json.dumps(task_info))
     
-    def handle_result(self, task_id, result_type):
+    def handle_result(self, task_id, result_type, result_info=None):
         """根据处理结果转移任务位置"""
         # 更新任务完成信息
-        self.update_task_end_time(task_id, result_type)
+        self.update_task_end_time(task_id, result_type, result_info)
         
         if result_type == 'DONE':
             self.redis.sadd(self.queues['DONE'], task_id)
-        elif result_type == 'NULL':
-            self.redis.lpush(self.queues['NULL'], task_id)
+        elif result_type == 'SKIP':
+            self.redis.lpush(self.queues['SKIP'], task_id)
         elif result_type == 'ERROR':
             self.redis.lpush(self.queues['ERROR'], task_id)
-        elif result_type == 'FAIL':  # 重试情况，放回TODO队列
+        elif result_type == 'RETRY':  # 重试情况，放回TODO队列
             task_info_str = self.redis.hget(self.task_info_key, task_id)
             if task_info_str:
                 task_info = json.loads(task_info_str)
                 self.redis.lpush(self.queues['TODO'], 
                                json.dumps({'id': task_id, 'data': task_info['data']}))
     
-    def update_task_end_time(self, task_id, result_type):
-        """更新任务完成时间和计算处理时长"""
+    def update_task_end_time(self, task_id, result_type, result_info=None):
+        """更新任务完成时间和处理结果信息"""
         task_info_str = self.redis.hget(self.task_info_key, task_id)
         if task_info_str:
             task_info = json.loads(task_info_str)
@@ -86,6 +86,12 @@ class TaskStorage:
                 start_time = datetime.fromisoformat(task_info['start_time'])
                 duration = (end_time - start_time).total_seconds()
                 task_info['duration'] = round(duration, 2)
+            
+            # 添加处理结果信息
+            if result_info:
+                task_info['message'] = result_info.get('message', '')
+                task_info['result_data'] = result_info.get('data', {})
+                task_info['processing_time'] = result_info.get('processing_time', 0)
             
             self.redis.hset(self.task_info_key, task_id, json.dumps(task_info))
     
@@ -109,9 +115,9 @@ class TaskStorage:
         raw_tasks = self.redis.smembers(self.queues['DONE'])
         return [task_id.decode('utf-8') for task_id in raw_tasks]
     
-    def get_all_null_tasks(self):
-        """获取NULL队列所有任务ID（解析后）"""
-        raw_tasks = self.redis.lrange(self.queues['NULL'], 0, -1)
+    def get_all_skip_tasks(self):
+        """获取SKIP队列所有任务ID（解析后）"""
+        raw_tasks = self.redis.lrange(self.queues['SKIP'], 0, -1)
         return [task_id.decode('utf-8') for task_id in raw_tasks]
     
     def get_all_error_tasks(self):
@@ -163,7 +169,7 @@ class TaskStorage:
         return {
             'TODO': self.get_all_todo_tasks(),
             'DONE': self.get_all_done_tasks(),
-            'NULL': self.get_all_null_tasks(),
+            'SKIP': self.get_all_skip_tasks(),
             'ERROR': self.get_all_error_tasks(),
             'RETRIES': self.get_all_retries(),
             'TASK_INFOS': self.get_all_task_infos()
@@ -174,7 +180,7 @@ class TaskStorage:
         return {
             'todo_count': self.redis.llen(self.queues['TODO']),
             'done_count': self.redis.scard(self.queues['DONE']),
-            'null_count': self.redis.llen(self.queues['NULL']),
+            'skip_count': self.redis.llen(self.queues['SKIP']),
             'error_count': self.redis.llen(self.queues['ERROR']),
-            'total_count': self.redis.llen(self.queues['TODO']) + self.redis.scard(self.queues['DONE']) + self.redis.llen(self.queues['NULL']) + self.redis.llen(self.queues['ERROR'])
+            'total_count': self.redis.llen(self.queues['TODO']) + self.redis.scard(self.queues['DONE']) + self.redis.llen(self.queues['SKIP']) + self.redis.llen(self.queues['ERROR'])
         }

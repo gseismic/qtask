@@ -24,12 +24,13 @@ def cli():
 @cli.command()
 @click.option('--host', default='0.0.0.0', help='Server host')
 @click.option('--port', default=8000, help='Server port')
-def server(host: str, port: int):
+@click.option('--reload', is_flag=True, help='Reload server on code changes')
+def server(host: str, port: int, reload: bool):
     """Start QTask web server."""
     click.echo(f"Starting QTask server on {host}:{port}")
     
     server = QTaskServer()
-    server.run(host=host, port=port)
+    server.run(host=host, port=port, reload=reload)
 
 
 @cli.command()
@@ -43,7 +44,7 @@ def status():
         click.echo("=" * 20)
         click.echo(f"TODO tasks: {stats['todo_count']}")
         click.echo(f"DONE tasks: {stats['done_count']}")
-        click.echo(f"NULL tasks: {stats['null_count']}")
+        click.echo(f"SKIP tasks: {stats['skip_count']}")
         click.echo(f"ERROR tasks: {stats['error_count']}")
         
         groups = storage.get_all_groups()
